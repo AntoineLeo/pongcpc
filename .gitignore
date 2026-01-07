@@ -1,0 +1,7 @@
+*.sna
+*.bin
+*.BIN
+*.tmp
+.vscode/
+*.dsk
+*.exe
