@@ -8,8 +8,8 @@ START:
     ld sp, #C000        
     call INIT_TABLES
 
-    ; Initialiser le Mode 2
-    ld bc, #7F8E        ; Gate Array Port + Mode 2 command
+    ; Initialiser le Mode 0
+    ld bc, #7F8C        ; Gate Array Port + Mode 0 command
     out (c), c
 
     ; Initialiser les couleurs
@@ -24,8 +24,8 @@ START:
     ld bc, #7F54        ; Noir
     out (c), c
 
-    ; Pen 1 (Encre) -> Blanc Brillant
-    ld bc, #7F01        
+    ; Pen 15 (Encre) -> Blanc Brillant
+    ld bc, #7F0F        
     out (c), c
     ld bc, #7F4B        ; Blanc
     out (c), c
@@ -64,12 +64,14 @@ CLS:
     ret
 
 DRAW_BOUNDARIES:
-    ; Safe Area (24,24) to (616,176)
+    ; Safe Area Mode 0 (6,24) to (154,176)
     
     ; --- Lignes Haut (Double) ---
-    ld hl, 24   ; X start
+    ld hl, 6    ; X start
     ld de, 24   ; Y start
-    ld b, 74    ; Largeur octets
+    ld b, 19    ; Largeur octets (Approx 150px / 8px/byte ? Non 2px/byte -> 75 octets)
+                ; Largeur = (154-6) = 148 pixels. / 2 = 74 octets.
+    ld b, 74
 .loop_top:
     push bc
     push hl
@@ -85,13 +87,13 @@ DRAW_BOUNDARIES:
     
     pop de      ; Restore Y original (24)
     pop hl
-    ld bc, 8
+    ld bc, 2    ; Move X by 2 pixels (1 byte)
     add hl, bc
     pop bc
     djnz .loop_top
 
     ; --- Lignes Bas (Double) ---
-    ld hl, 24
+    ld hl, 6
     ld de, 175
     ld b, 74
 .loop_bottom:
@@ -109,7 +111,7 @@ DRAW_BOUNDARIES:
     
     pop de      ; Restore Y original
     pop hl
-    ld bc, 8
+    ld bc, 2    ; Move X by 2 pixels (1 byte)
     add hl, bc
     pop bc
     djnz .loop_bottom
@@ -120,9 +122,9 @@ DRAW_BOUNDARIES:
 .loop_left:
     push bc
     push de
-    ld hl, 24
+    ld hl, 6
     call PLOT_PIXEL_XOR
-    ld hl, 25
+    ld hl, 7
     call PLOT_PIXEL_XOR
     pop de
     inc e
@@ -135,9 +137,9 @@ DRAW_BOUNDARIES:
 .loop_right:
     push bc
     push de
-    ld hl, 615
+    ld hl, 153
     call PLOT_PIXEL_XOR
-    ld hl, 616
+    ld hl, 154
     call PLOT_PIXEL_XOR
     pop de
     inc e
@@ -163,11 +165,7 @@ PLOT_FULL_BYTE:
     
     pop bc          ; Récupère X dans BC car HL est occupé
     
-    ; Divise X par 8 pour offset octet
-    srl b
-    rr c
-    srl b
-    rr c
+    ; Divise X par 2 pour offset octet (Mode 0)
     srl b
     rr c            ; BC = Offset
     
@@ -197,25 +195,23 @@ UPDATE_POSITION:
     add hl, de
     ld (BallX), hl
 
-    ; Check X Max (Mur à 615)
-    ld bc, 615
+    ; Check X Max (Mur à 153)
+    ld bc, 153
     or a
     sbc hl, bc
     jr c, .test_left
 
     ; Rebond Droite
     call NEGATE_VEL_X
-    ld hl, 614
+    ld hl, 152
     ld (BallX), hl
     jr .update_y
 
 .test_left:
-    ; Check X Min (Mur à 25)
+    ; Check X Min (Mur à 7)
     ld hl, (BallX)
-    bit 7, h        
-    jr nz, .do_bounce_left
     
-    ld bc, 26
+    ld bc, 7
     or a
     sbc hl, bc
     jr nc, .update_y 
@@ -223,7 +219,7 @@ UPDATE_POSITION:
 .do_bounce_left:
     ; Rebond Gauche
     call NEGATE_VEL_X
-    ld hl, 26
+    ld hl, 8
     ld (BallX), hl
 
 .update_y:
@@ -309,24 +305,20 @@ PLOT_PIXEL_XOR:
     ld b, h
     ld c, l         
     
-    ; X / 8 pour offset octet
+    ; X / 2 pour offset octet (Mode 0)
     srl b
     rr c
-    srl b
-    rr c
-    srl b
-    rr c            
     
-CALC_ADR_H:
+    CALC_ADR_H:
     ld h, 0         ; Self-modified
-CALC_ADR_L:
+    CALC_ADR_L:
     ld l, 0         ; Self-modified
     add hl, bc      
     
     ; Calcul pixel mask
     pop bc          
     ld a, c
-    and 7           
+    and 1           ; Modulo 2 (Mode 0)
     
     ld de, TABLE_PIXEL_MASK
     ld c, a
@@ -386,11 +378,11 @@ INIT_TABLES:
 ; DATA
 ; -------------------------------------------
 
-BallX:  dw 320
+BallX:  dw 80
 BallY:  dw 100
-OldX:   dw 320
+OldX:   dw 80
 OldY:   dw 100
-VelX:   dw 2
+VelX:   dw 1
 VelY:   dw 1
 
     ALIGN 256
@@ -398,7 +390,7 @@ TABLE_Y_L:  defs 200
 TABLE_Y_H:  defs 200
 
 TABLE_PIXEL_MASK:
-    db #80, #40, #20, #10, #08, #04, #02, #01
+    db #AA, #55
 
     ; Generation DSK
     SAVE "PONG.BIN", START, $-START, DSK, "pong.dsk"
